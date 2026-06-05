@@ -12,7 +12,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_PASSWORD = "Qszwdxefc12!"  # ← пароль для админки
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")  # ← пароль для админки
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 bot = Bot(token=BOT_TOKEN)
