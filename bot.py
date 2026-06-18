@@ -12,7 +12,8 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")  # ← пароль для админки
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 bot = Bot(token=BOT_TOKEN)
@@ -20,7 +21,6 @@ storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 db_pool = None
 
-# Хранилище для авторизованных админов (временное)
 admin_sessions = set()
 
 
@@ -33,16 +33,18 @@ class MailingStates(StatesGroup):
     waiting_for_confirm = State()
 
 
+class SurveyStates(StatesGroup):
+    waiting_for_application = State()
+
+
 class AdminAuthStates(StatesGroup):
     waiting_for_password = State()
 
 
-# --- Проверка авторизации админа ---
 def is_admin(user_id: int) -> bool:
     return user_id in admin_sessions
 
 
-# --- База данных ---
 async def init_db():
     global db_pool
     db_pool = await asyncpg.create_pool(DATABASE_URL, statement_cache_size=0)
@@ -101,7 +103,6 @@ async def get_user_id_by_username(username):
         return row[0] if row else None
 
 
-# --- Клавиатуры ---
 def get_target_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📢 Всем пользователям", callback_data="target_all")],
@@ -123,14 +124,11 @@ def get_button_choice_keyboard():
     ])
 
 
-# --- КОМАНДА /admin (вход по паролю) ---
+# --- /admin ---
 @dp.message(Command("admin"))
 async def cmd_admin(message: types.Message, state: FSMContext):
     await state.set_state(AdminAuthStates.waiting_for_password)
-    await message.answer(
-        "🔐 *Введите пароль администратора*",
-        parse_mode="Markdown"
-    )
+    await message.answer("🔐 *Введите пароль администратора*", parse_mode="Markdown")
 
 
 @dp.message(AdminAuthStates.waiting_for_password)
@@ -151,7 +149,7 @@ async def show_admin_panel(message: types.Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")],
         [InlineKeyboardButton(text="👥 Список пользователей", callback_data="admin_users")],
-        [InlineKeyboardButton(text="📋 HTML-справка", callback_data="admin_html_help")],
+        [InlineKeyboardButton(text="📋 Форматирование", callback_data="admin_html_help")],
         [InlineKeyboardButton(text="🚪 Выйти", callback_data="admin_logout")]
     ])
     
@@ -164,7 +162,7 @@ async def show_admin_panel(message: types.Message):
     )
 
 
-# --- HTML-справка для админа ---
+# --- Форматирование (HTML-справка) ---
 @dp.callback_query(F.data == "admin_html_help")
 async def admin_html_help(callback: types.CallbackQuery):
     if not is_admin(callback.from_user.id):
@@ -174,28 +172,36 @@ async def admin_html_help(callback: types.CallbackQuery):
     await callback.answer()
     
     help_text = """
-📚 <b>HTML-теги для форматирования текста в рассылке:</b>
+📚 <b>Форматирование текста для рассылки</b>
 
-• <b>жирный текст</b> → <code>&lt;b&gt;текст&lt;/b&gt;</code>
+<b>Жирный текст</b>
+<code>&lt;b&gt;текст&lt;/b&gt;</code>
 
-• <i>курсив</i> → <code>&lt;i&gt;текст&lt;/i&gt;</code>
+<i>Курсив</i>
+<code>&lt;i&gt;текст&lt;/i&gt;</code>
 
-• <a href="https://example.com">ссылка</a> → <code>&lt;a href="URL"&gt;текст&lt;/a&gt;</code>
+<a href="https://site.com">Ссылка</a>
+<code>&lt;a href="URL"&gt;текст&lt;/a&gt;</code>
 
-• <tg-spoiler>спойлер</tg-spoiler> → <code>&lt;tg-spoiler&gt;текст&lt;/tg-spoiler&gt;</code>
+<tg-spoiler>Спойлер</tg-spoiler>
+<code>&lt;tg-spoiler&gt;текст&lt;/tg-spoiler&gt;</code>
 
-• <blockquote>цитата</blockquote> → <code>&lt;blockquote&gt;текст&lt;/blockquote&gt;</code>
+<blockquote>Цитата</blockquote>
+<code>&lt;blockquote&gt;текст&lt;/blockquote&gt;</code>
 
-• <u>подчёркнутый</u> → <code>&lt;u&gt;текст&lt;/u&gt;</code>
+<u>Подчёркнутый</u>
+<code>&lt;u&gt;текст&lt;/u&gt;</code>
 
-• <s>зачёркнутый</s> → <code>&lt;s&gt;текст&lt;/s&gt;</code>
+<s>Зачёркнутый</s>
+<code>&lt;s&gt;текст&lt;/s&gt;</code>
 
-<pre>Пример использования:
-&lt;b&gt;ВНИМАНИЕ!&lt;/b&gt;
-&lt;i&gt;Акция действует до...&lt;/i&gt;
-&lt;a href="https://site.com"&gt;Перейти&lt;/a&gt;</pre>
+<pre>Пример для пароля:
+&lt;b&gt;Пароль для входа на сайт: 77090&lt;/b&gt;
 
-<i>Теги можно комбинировать внутри одного сообщения.</i>
+&lt;a href="https://ceoment.ru/"&gt;Купить - https://ceoment.ru/&lt;/a&gt;
+(количество ограничено)</pre>
+
+<i>Теги можно комбинировать.</i>
 """
     
     await callback.message.answer(help_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -203,7 +209,43 @@ async def admin_html_help(callback: types.CallbackQuery):
     ]))
 
 
-# --- Выход из админки ---
+# --- /start (новая логика с заявкой) ---
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message, state: FSMContext):
+    await save_user(message.from_user.id, message.from_user.username, message.from_user.first_name)
+    
+    await message.answer(
+        "<b>Приветствую! Чтобы получить пароль для покупки, распиши почему именно ты должен получить его</b>",
+        parse_mode="HTML"
+    )
+    await state.set_state(SurveyStates.waiting_for_application)
+
+
+# --- Обработка заявки ---
+@dp.message(SurveyStates.waiting_for_application)
+async def process_application(message: types.Message, state: FSMContext):
+    user = message.from_user
+    username = f"@{user.username}" if user.username else f"ID: {user.id}"
+    
+    # Отправляем админу
+    await bot.send_message(
+        ADMIN_ID,
+        f"📩 <b>НОВАЯ ЗАЯВКА</b>\n\n"
+        f"👤 {username}\n\n"
+        f"📝 {message.text}",
+        parse_mode="HTML"
+    )
+    
+    # Отправляем пользователю
+    await message.answer(
+        "<b>Спасибо! Ваша заявка отправлена на обработку, в случае если нам понравится ваша заявка, мы вам отправим пароль за день до дропа</b>",
+        parse_mode="HTML"
+    )
+    
+    await state.clear()
+
+
+# --- Остальные админ-команды ---
 @dp.callback_query(F.data == "admin_logout")
 async def admin_logout(callback: types.CallbackQuery):
     if callback.from_user.id in admin_sessions:
@@ -212,7 +254,6 @@ async def admin_logout(callback: types.CallbackQuery):
     await callback.message.delete()
 
 
-# --- Назад в админку ---
 @dp.callback_query(F.data == "admin_back")
 async def admin_back(callback: types.CallbackQuery):
     if not is_admin(callback.from_user.id):
@@ -222,20 +263,16 @@ async def admin_back(callback: types.CallbackQuery):
     await show_admin_panel(callback.message)
 
 
-# --- Статистика ---
 @dp.callback_query(F.data == "admin_stats")
 async def admin_stats(callback: types.CallbackQuery):
     if not is_admin(callback.from_user.id):
         await callback.answer("⛔ Нет доступа", show_alert=True)
         return
-    
     users = await get_all_users()
     total = len(users)
-    
     await callback.answer()
     await callback.message.answer(
-        f"<b>📊 СТАТИСТИКА</b>\n\n"
-        f"👥 <b>Всего пользователей:</b> {total}",
+        f"<b>📊 СТАТИСТИКА</b>\n\n👥 <b>Всего пользователей:</b> {total}",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
@@ -243,48 +280,28 @@ async def admin_stats(callback: types.CallbackQuery):
     )
 
 
-# --- Список пользователей ---
 @dp.callback_query(F.data == "admin_users")
 async def admin_users(callback: types.CallbackQuery):
     if not is_admin(callback.from_user.id):
         await callback.answer("⛔ Нет доступа", show_alert=True)
         return
-    
     users = await get_all_users()
     if not users:
         await callback.answer("📭 Нет пользователей")
         return
-    
     text = "<b>👥 СПИСОК ПОЛЬЗОВАТЕЛЕЙ:</b>\n\n"
     for uid, username, first_name in users[:30]:
         uname = f"@{username}" if username else "нет username"
         name = first_name or "без имени"
         text += f"👤 {name} ({uname}) — <code>{uid}</code>\n"
-    
     if len(users) > 30:
         text += f"\n<i>... и еще {len(users) - 30} пользователей</i>"
-    
     await callback.answer()
     await callback.message.answer(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
     ]))
 
 
-# --- Команда /start ---
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    await save_user(message.from_user.id, message.from_user.username, message.from_user.first_name)
-    password = await get_password()
-    await message.answer(
-        f"🔐 *Добро пожаловать!*\n\n"
-        f"Пароль для входа на сайт:\n"
-        f"`{password}`\n\n"
-        f"Сохрани его. Пароль может меняться.",
-        parse_mode="Markdown"
-    )
-
-
-# --- Команда /изменитьпароль ---
 @dp.message(Command("изменитьпароль"))
 async def cmd_change_password(message: types.Message):
     if not is_admin(message.from_user.id):
@@ -299,7 +316,6 @@ async def cmd_change_password(message: types.Message):
     await message.answer(f"✅ Пароль изменён на: `{new_pass}`", parse_mode="Markdown")
 
 
-# --- Команда /база ---
 @dp.message(Command("база"))
 async def cmd_get_users(message: types.Message):
     if not is_admin(message.from_user.id):
@@ -309,7 +325,6 @@ async def cmd_get_users(message: types.Message):
     if not users:
         await message.answer("📭 Нет пользователей")
         return
-
     batch = []
     for uid, username, first_name in users:
         uname = f"@{username}" if username else "нет username"
@@ -323,7 +338,6 @@ async def cmd_get_users(message: types.Message):
         await message.answer("\n".join(batch), parse_mode="Markdown")
 
 
-# --- Команда /рассылка ---
 @dp.message(Command("рассылка"))
 async def cmd_mailing(message: types.Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -333,7 +347,6 @@ async def cmd_mailing(message: types.Message, state: FSMContext):
     await message.answer("📨 *Кому отправляем рассылку?*", parse_mode="Markdown", reply_markup=get_target_keyboard())
 
 
-# --- Остальные обработчики рассылки (без изменений) ---
 @dp.callback_query(F.data == "target_all", MailingStates.waiting_for_target)
 async def process_target_all(callback: types.CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
@@ -343,10 +356,7 @@ async def process_target_all(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(target="all")
     await state.set_state(MailingStates.waiting_for_content)
     await callback.message.edit_text(
-        "📝 *Отправь сообщение для рассылки*\n\n"
-        "Можно: текст, фото, видео, кружок, документ.\n"
-        "В тексте можно использовать <b>HTML</b> теги.\n\n"
-        "Просто отправь сообщение.",
+        "📝 *Отправь сообщение для рассылки*\n\nМожно: текст, фото, видео, кружок, документ.\nВ тексте можно использовать <b>HTML</b> теги.\n\nПросто отправь сообщение.",
         parse_mode="Markdown"
     )
 
@@ -360,8 +370,7 @@ async def process_target_select(callback: types.CallbackQuery, state: FSMContext
     await state.update_data(target="select")
     await state.set_state(MailingStates.waiting_for_usernames)
     await callback.message.edit_text(
-        "📝 *Отправь список username через запятую*\n\n"
-        "Пример: `@john,@jane,@alex`",
+        "📝 *Отправь список username через запятую*\n\nПример: `@john,@jane,@alex`",
         parse_mode="Markdown"
     )
 
@@ -389,9 +398,7 @@ async def process_usernames(message: types.Message, state: FSMContext):
     await state.update_data(users_to_send=users_to_send, not_found=not_found)
     await state.set_state(MailingStates.waiting_for_content)
     await message.answer(
-        f"✅ Найдено {len(users_to_send)} пользователей.\n"
-        f"❌ Не найдены: {', '.join(not_found) if not_found else 'нет'}\n\n"
-        "📝 *Отправь сообщение для рассылки*",
+        f"✅ Найдено {len(users_to_send)} пользователей.\n❌ Не найдены: {', '.join(not_found) if not_found else 'нет'}\n\n📝 *Отправь сообщение для рассылки*",
         parse_mode="Markdown"
     )
 
@@ -596,7 +603,17 @@ async def main():
     await init_db()
     print("🚀 Бот запущен")
     print("🔐 Пароль админа:", ADMIN_PASSWORD)
-    await dp.start_polling(bot)
+    
+    # Повторные попытки подключения к Telegram
+    for attempt in range(5):
+        try:
+            await dp.start_polling(bot)
+            break
+        except Exception as e:
+            print(f"❌ Ошибка подключения (попытка {attempt+1}/5): {e}")
+            await asyncio.sleep(5)
+    else:
+        print("❌ Не удалось подключиться после 5 попыток")
 
 
 if __name__ == "__main__":
