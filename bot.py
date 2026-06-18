@@ -13,7 +13,7 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
+ADMIN_ID = int(os.getenv("ADMIN_ID"))  # запасной вариант, если нет админов
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 bot = Bot(token=BOT_TOKEN)
@@ -43,6 +43,23 @@ class AdminAuthStates(StatesGroup):
 
 def is_admin(user_id: int) -> bool:
     return user_id in admin_sessions
+
+
+async def notify_admins(text: str, parse_mode: str = "HTML"):
+    """Отправляет сообщение всем авторизованным админам"""
+    if not admin_sessions:
+        # Если админов нет — отправляем владельцу (запасной вариант)
+        try:
+            await bot.send_message(ADMIN_ID, text, parse_mode=parse_mode)
+        except:
+            pass
+        return
+    
+    for admin_id in admin_sessions:
+        try:
+            await bot.send_message(admin_id, text, parse_mode=parse_mode)
+        except:
+            pass
 
 
 async def init_db():
@@ -227,13 +244,11 @@ async def process_application(message: types.Message, state: FSMContext):
     user = message.from_user
     username = f"@{user.username}" if user.username else f"ID: {user.id}"
     
-    # Отправляем админу
-    await bot.send_message(
-        ADMIN_ID,
+    # Отправляем всем авторизованным админам
+    await notify_admins(
         f"📩 <b>НОВАЯ ЗАЯВКА</b>\n\n"
         f"👤 {username}\n\n"
-        f"📝 {message.text}",
-        parse_mode="HTML"
+        f"📝 {message.text}"
     )
     
     # Отправляем пользователю
