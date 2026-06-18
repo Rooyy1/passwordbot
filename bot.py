@@ -371,7 +371,13 @@ async def process_target_all(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(target="all")
     await state.set_state(MailingStates.waiting_for_content)
     await callback.message.edit_text(
-        "📝 *Отправь сообщение для рассылки*\n\nМожно: текст, фото, видео, кружок, документ.\nВ тексте можно использовать <b>HTML</b> теги.\n\nПросто отправь сообщение.",
+        "📝 *Отправь сообщение для рассылки*\n\n"
+        "Можно: текст, фото, видео, кружок, документ.\n"
+        "В тексте можно использовать <b>HTML</b> теги.\n\n"
+        "📋 *Готовый шаблон для пароля (скопируй и вставь):*\n\n"
+        "<b>Пароль для входа на сайт: 77090 \n\n"
+        "Купить - https://ceoment.ru/ (количество ограничено)</b>\n\n"
+        "Просто отправь сообщение.",
         parse_mode="Markdown"
     )
 
@@ -385,7 +391,12 @@ async def process_target_select(callback: types.CallbackQuery, state: FSMContext
     await state.update_data(target="select")
     await state.set_state(MailingStates.waiting_for_usernames)
     await callback.message.edit_text(
-        "📝 *Отправь список username через запятую*\n\nПример: `@john,@jane,@alex`",
+        "📝 *Отправь список username через запятую*\n\n"
+        "Пример: `@john,@jane,@alex`\n\n"
+        "📋 *Готовый шаблон для пароля (скопируй и вставь):*\n\n"
+        "<b>Пароль для входа на сайт: 77090 \n\n"
+        "Купить - https://ceoment.ru/ (количество ограничено)</b>\n\n"
+        "После отправки списка я попрошу текст рассылки.",
         parse_mode="Markdown"
     )
 
